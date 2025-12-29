@@ -1,76 +1,46 @@
 import crypto from "crypto";
-import bcrypt from "bcryptjs";
-import nodemailer from "nodemailer";
-import User from  "../models/User.js";
+import bcrypt from "bcrypt";
+import User from "../models/User.js";
+import sendEmail from "../utils/sendEmail.js";
 
-const FRONTEND_URL = "http://localhost:5173"; // Vite frontend
-
-// 📩 Send Reset Link
+/* FORGOT PASSWORD */
 export const forgotPassword = async (req, res) => {
   const { email } = req.body;
-  try {
-    const user = await User.findOne({ email });
-    if (!user) return res.status(404).json({ message: "User not found" });
 
-    const token = crypto.randomBytes(32).toString("hex");
-    const expiry = Date.now() + 10 * 60 * 1000; // 10 minutes
+  const user = await User.findOne({ email });
+  if (!user) return res.status(404).json({ message: "User not found" });
 
-    user.resetToken = token;
-    user.resetTokenExpiry = expiry;
-    await user.save();
+  const token = crypto.randomBytes(32).toString("hex");
 
-    // Configure mailer
-    const transporter = nodemailer.createTransport({
-      service: "gmail",
-      auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS,
-      },
-    });
+  user.resetToken = token;
+  user.resetTokenExpiry = Date.now() + 15 * 60 * 1000; // 15 minutes
+  await user.save();
 
-    const resetLink = `${FRONTEND_URL}/reset-password/${token}`;
+  const link = `http://localhost:5173/reset-password/${token}`;
+  await sendEmail(email, link);
 
-    const mailOptions = {
-      from: process.env.EMAIL_USER,
-      to: email,
-      subject: "Password Reset Link",
-      html: `
-        <p>You requested a password reset.</p>
-        <p>Click <a href="${resetLink}">here</a> to reset your password.</p>
-        <p>This link expires in 10 minutes.</p>
-      `,
-    };
-
-    await transporter.sendMail(mailOptions);
-
-    res.json({ message: "Password reset link sent to your email." });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: "Server error" });
-  }
+  res.json({ message: "Reset link sent to email" });
 };
 
-// 🔐 Reset Password
+/* RESET PASSWORD */
 export const resetPassword = async (req, res) => {
   const { token } = req.params;
   const { password } = req.body;
 
-  try {
-    const user = await User.findOne({
-      resetToken: token,
-      resetTokenExpiry: { $gt: Date.now() },
-    });
+  const user = await User.findOne({
+    resetToken: token,
+    resetTokenExpiry: { $gt: Date.now() }
+  });
 
-    if (!user) return res.status(400).json({ message: "Invalid or expired token" });
-
-    user.password = password;
-    user.resetToken = undefined;
-    user.resetTokenExpiry = undefined;
-    await user.save();
-
-    res.json({ message: "Password has been reset successfully." });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: "Server error" });
+  if (!user) {
+    return res.status(400).json({ message: "Invalid or expired token" });
   }
+
+  const hashedPassword = await bcrypt.hash(password, 10);
+  user.password = hashedPassword;
+  user.resetToken = null;
+  user.resetTokenExpiry = null;
+
+  await user.save();
+  res.json({ message: "Password reset successful" });
 };

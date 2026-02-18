@@ -28,6 +28,9 @@ app.use("/api/auth", authRoutes);
 
 // Error Middleware (must be last)
 app.use(errorHandler);
+app.get("/", (req, res) => {
+  res.send("Backend running successfully");
+});
 
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);

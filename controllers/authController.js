@@ -1,46 +1,95 @@
-import crypto from "crypto";
-import bcrypt from "bcrypt";
-import User from "../models/User.js";
-import sendEmail from "../utils/sendEmail.js";
+const User = require("../model/User.js");
+const bcrypt = require("bcryptjs");
+const crypto = require("crypto");
+const asyncHandler = require("../middleware/asyncHandler");
+const sendEmail = require("../utils/sendEmail");
 
-/* FORGOT PASSWORD */
-export const forgotPassword = async (req, res) => {
+// ================= REGISTER =================
+exports.registerUser = asyncHandler(async (req, res) => {
+  const { email, password } = req.body;
+
+  const userExists = await User.findOne({ email });
+
+  if (userExists) {
+    res.status(400);
+    throw new Error("User already exists");
+  }
+
+  const hashedPassword = await bcrypt.hash(password, 10);
+
+  await User.create({
+    email,
+    password: hashedPassword,
+  });
+
+  res.status(201).json({
+    message: "User Registered Successfully",
+  });
+});
+
+// ================= FORGOT PASSWORD =================
+exports.forgotPassword = asyncHandler(async (req, res) => {
   const { email } = req.body;
 
   const user = await User.findOne({ email });
-  if (!user) return res.status(404).json({ message: "User not found" });
+
+  if (!user) {
+    res.status(404);
+    throw new Error("Email not found in database");
+  }
 
   const token = crypto.randomBytes(32).toString("hex");
 
   user.resetToken = token;
-  user.resetTokenExpiry = Date.now() + 15 * 60 * 1000; // 15 minutes
+  user.resetTokenExpiry = new Date(Date.now() + 10 * 60 * 1000); // FIXED
+
   await user.save();
 
-  const link = `http://localhost:5173/reset-password/${token}`;
-  await sendEmail(email, link);
+  // const resetLink = `http://localhost:5173/reset-password/${token}`;
+  const resetLink = `${process.env.CLIENT_URL}/reset-password/${token}`;
 
-  res.json({ message: "Reset link sent to email" });
-};
 
-/* RESET PASSWORD */
-export const resetPassword = async (req, res) => {
+  const htmlMessage = `
+    <h2>Password Reset</h2>
+    <p>You requested to reset your password.</p>
+    <a href="${resetLink}" 
+       style="padding:10px 20px; background:#007bff; color:white; text-decoration:none;">
+       Reset Password
+    </a>
+    <p>This link expires in 10 minutes.</p>
+  `;
+
+  await sendEmail(user.email, "Password Reset Request", htmlMessage);
+
+  res.json({
+    message: "Reset link sent to your email",
+  });
+});
+
+// ================= RESET PASSWORD =================
+exports.resetPassword = asyncHandler(async (req, res) => {
   const { token } = req.params;
   const { password } = req.body;
 
   const user = await User.findOne({
     resetToken: token,
-    resetTokenExpiry: { $gt: Date.now() }
+    resetTokenExpiry: { $gt: new Date() }, // FIXED
   });
 
   if (!user) {
-    return res.status(400).json({ message: "Invalid or expired token" });
+    res.status(400);
+    throw new Error("Invalid or expired token");
   }
 
   const hashedPassword = await bcrypt.hash(password, 10);
+
   user.password = hashedPassword;
-  user.resetToken = null;
-  user.resetTokenExpiry = null;
+  user.resetToken = undefined;
+  user.resetTokenExpiry = undefined;
 
   await user.save();
-  res.json({ message: "Password reset successful" });
-};
+
+  res.json({
+    message: "Password updated successfully",
+  });
+});

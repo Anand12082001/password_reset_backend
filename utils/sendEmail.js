@@ -1,20 +1,25 @@
-import nodemailer from "nodemailer";
+const sgMail = require("@sendgrid/mail");
+require("dotenv").config();
 
-const sendEmail = async (email, link) => {
-  const transporter = nodemailer.createTransport({
-    service: "gmail",
-    auth: {
-      user: process.env.EMAIL_USER,
-      pass: process.env.EMAIL_PASS
-    }
-  });
+sgMail.setApiKey(process.env.SENDGRID_API_KEY);
 
-  await transporter.sendMail({
-    to: email,
-    subject: "Password Reset",
-    html: `<p>Click below to reset password:</p>
-           <a href="${link}">${link}</a>`
-  });
+const sendEmail = async (to, subject, html) => {
+  try {
+    await sgMail.send({
+      to,
+      from: process.env.SENDGRID_FROM_EMAIL, // MUST match .env
+      subject,
+      html,
+    });
+
+    console.log("✅ Email sent via SendGrid API");
+  } catch (error) {
+    console.error(
+      "❌ SendGrid API error:",
+      error.response?.body || error.message
+    );
+    throw error;
+  }
 };
 
-export default sendEmail;
+module.exports = sendEmail;

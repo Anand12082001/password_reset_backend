@@ -17,7 +17,7 @@ app.use(express.json());
 app.use(cors({
   origin: [
     "http://localhost:5173",
-    "https://password-reset-backend-1-f3se.onrender.com"
+    "https://ephemeral-cucurucho-377b2d.netlify.app"
   ],
   credentials: true
 }));
